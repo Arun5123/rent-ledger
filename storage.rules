@@ -1,0 +1,34 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ------------------------------------------------------------- helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Receipts, documents and ID proofs are images or PDFs, capped at 10 MB.
+    function acceptableUpload() {
+      return request.resource.size <= 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType == 'application/pdf');
+    }
+
+    // Every object lives under users/{uid}/ and is only reachable by its owner.
+    // Uploads must be an image/PDF no larger than 10 MB. Deletes carry no
+    // resource payload, so they are allowed for the owner as-is.
+    match /users/{uid}/{allPaths=**} {
+      allow read: if isOwner(uid);
+      allow write: if isOwner(uid)
+        && (request.method == 'delete'
+            || (request.resource != null && acceptableUpload()));
+    }
+
+    // Anything outside users/** is blocked by the implicit default deny.
+  }
+}

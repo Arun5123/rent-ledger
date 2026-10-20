@@ -1,0 +1,219 @@
+rules_version = '2';
+
+// Ownership-based rules. Every document lives under `users/{uid}` so a single
+// ownership check covers the whole tree. Anything not explicitly allowed here
+// is denied by default.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------- helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function validPropertyType(value) {
+      return value in ['APARTMENT', 'INDEPENDENT_HOUSE', 'VILLA', 'SHOP', 'OFFICE', 'PG_HOSTEL', 'WAREHOUSE', 'OTHER'];
+    }
+
+    function validPropertyStatus(value) {
+      return value in ['VACANT', 'OCCUPIED', 'UNDER_MAINTENANCE'];
+    }
+
+    function validElectricityBillingType(value) {
+      return value in ['SUB_METER', 'DIRECT_EB', 'FIXED'];
+    }
+
+    function validTenantStatus(value) {
+      return value in ['ACTIVE', 'EXITED'];
+    }
+
+    function validTransactionType(value) {
+      return value in ['RENT_PAYMENT', 'MAINTENANCE_FEE', 'EB_BILL', 'WATER_BILL', 'ADVANCE_RECEIVED', 'ADVANCE_REFUND', 'PROPERTY_EXPENSE', 'OTHER'];
+    }
+
+    function validTransactionCategory(value) {
+      return value in ['INCOME', 'EXPENSE'];
+    }
+
+    function validPaymentMethod(value) {
+      return value in ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'OTHER'];
+    }
+
+    // -------------------------------------------------------- shape checks
+    function validUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'currency', 'defaultRatePerUnit', 'notificationsEnabled', 'rentReminderDay', 'onboardingComplete', 'createdAt', 'updatedAt'])
+        && data.uid == request.auth.uid
+        && data.name is string
+        && data.currency is string
+        && data.defaultRatePerUnit is number && data.defaultRatePerUnit >= 0
+        && data.notificationsEnabled is bool
+        && data.rentReminderDay is int && data.rentReminderDay >= 1 && data.rentReminderDay <= 28
+        && data.onboardingComplete is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validProperty(data) {
+      return data.keys().hasAll(['propertyId', 'propertyName', 'address', 'city', 'type', 'currentStatus', 'baseRent', 'baseMaintenance', 'electricityBillingType', 'currentEbMeterReading', 'ratePerUnit', 'fixedEbAmount', 'photos', 'isArchived', 'createdAt', 'updatedAt'])
+        && data.propertyId is string
+        && data.propertyName is string
+        && data.address is string
+        && data.city is string
+        && validPropertyType(data.type)
+        && validPropertyStatus(data.currentStatus)
+        && validElectricityBillingType(data.electricityBillingType)
+        && data.baseRent is number && data.baseRent >= 0
+        && data.baseMaintenance is number && data.baseMaintenance >= 0
+        && data.currentEbMeterReading is number && data.currentEbMeterReading >= 0
+        && data.ratePerUnit is number && data.ratePerUnit >= 0
+        && data.fixedEbAmount is number && data.fixedEbAmount >= 0
+        && data.photos is list
+        && data.isArchived is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validTenant(data) {
+      return data.keys().hasAll(['tenantId', 'propertyId', 'ownerId', 'name', 'phone', 'advanceDepositAmount', 'leaseStartDate', 'status', 'createdAt', 'updatedAt'])
+        && data.tenantId is string
+        && data.propertyId is string
+        && data.ownerId is string && data.ownerId == request.auth.uid
+        && data.name is string
+        && data.phone is string
+        && data.advanceDepositAmount is number && data.advanceDepositAmount >= 0
+        && data.leaseStartDate is timestamp
+        && validTenantStatus(data.status)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validTransaction(data) {
+      return data.keys().hasAll(['transactionId', 'propertyId', 'ownerId', 'type', 'category', 'amount', 'paymentMethod', 'billingPeriod', 'recordedAt', 'createdBy', 'createdAt'])
+        && data.transactionId is string
+        && data.propertyId is string
+        && data.ownerId is string && data.ownerId == request.auth.uid
+        && validTransactionType(data.type)
+        && validTransactionCategory(data.category)
+        && data.amount is number && data.amount >= 0
+        && validPaymentMethod(data.paymentMethod)
+        && data.billingPeriod is string
+        && data.recordedAt is timestamp
+        && data.createdBy is string
+        && data.createdAt is timestamp;
+    }
+
+    // ------------------------------------------------------------- user
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && validUser(request.resource.data)
+        && request.resource.data.uid == uid;
+      allow update: if isOwner(uid)
+        && validUser(request.resource.data)
+        && request.resource.data.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(uid);
+
+      // ----------------------------------------------------- properties
+      match /properties/{propertyId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && validProperty(request.resource.data)
+          && request.resource.data.propertyId == propertyId;
+        allow update: if isOwner(uid)
+          && validProperty(request.resource.data)
+          && request.resource.data.propertyId == resource.data.propertyId
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(uid);
+
+        // ------------------------------------------------------- tenants
+        match /tenants/{tenantId} {
+          allow read: if isOwner(uid);
+          allow create: if isOwner(uid)
+            && validTenant(request.resource.data)
+            && request.resource.data.tenantId == tenantId
+            && request.resource.data.propertyId == propertyId;
+          allow update: if isOwner(uid)
+            && validTenant(request.resource.data)
+            && request.resource.data.tenantId == resource.data.tenantId
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.propertyId == resource.data.propertyId
+            && request.resource.data.createdAt == resource.data.createdAt;
+          allow delete: if isOwner(uid);
+        }
+
+        // -------------------------------------------------- transactions
+        match /transactions/{transactionId} {
+          allow read: if isOwner(uid);
+          allow create: if isOwner(uid)
+            && validTransaction(request.resource.data)
+            && request.resource.data.transactionId == transactionId
+            && request.resource.data.propertyId == propertyId;
+          allow update: if isOwner(uid)
+            && validTransaction(request.resource.data)
+            && request.resource.data.transactionId == resource.data.transactionId
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.propertyId == resource.data.propertyId
+            && request.resource.data.createdAt == resource.data.createdAt;
+          allow delete: if isOwner(uid);
+        }
+      }
+
+      // ------------------------------------------------ monthly ledgers
+      // The client mirrors the server aggregate optimistically, but period,
+      // year and month must stay consistent for the lifetime of the document.
+      match /monthly_ledgers/{period} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && request.resource.data.period == period
+          && request.resource.data.year is int
+          && request.resource.data.month is int
+          && request.resource.data.month >= 1 && request.resource.data.month <= 12;
+        allow update: if isOwner(uid)
+          && request.resource.data.period == period
+          && request.resource.data.period == resource.data.period
+          && request.resource.data.year == resource.data.year
+          && request.resource.data.month == resource.data.month;
+        allow delete: if isOwner(uid);
+      }
+
+      // ------------------------------------------------- notifications
+      // Nothing writes these from the client, but account deletion has to be
+      // able to clear them.
+      match /notifications/{notificationId} {
+        allow read: if isOwner(uid);
+        allow delete: if isOwner(uid);
+      }
+
+      // --------------------------------------------------- export jobs
+      // Same as above: client-side only ever removes these.
+      match /export_jobs/{jobId} {
+        allow read: if isOwner(uid);
+        allow delete: if isOwner(uid);
+      }
+
+      // ------------------------------------------------------- devices
+      // FCM registration tokens, owned by the user.
+      match /devices/{token} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // ------------------------------------------------ collection groups
+    // Read-only rules so the app's collectionGroup('tenants') and
+    // collectionGroup('transactions') queries work. Rules are additive, so
+    // these never widen the nested write rules above.
+    match /{path=**}/tenants/{tenantId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /{path=**}/transactions/{transactionId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}

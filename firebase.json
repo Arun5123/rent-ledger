@@ -1,0 +1,47 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "rentledger-prod-a1b2c",
+          "appId": "1:131517915847:android:c2cee33791fb9970f6d4e2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "rentledger-prod-a1b2c",
+          "appId": "1:131517915847:ios:8cc882426031ffaaf6d4e2",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "rentledger-prod-a1b2c",
+          "configurations": {
+            "android": "1:131517915847:android:c2cee33791fb9970f6d4e2",
+            "ios": "1:131517915847:ios:8cc882426031ffaaf6d4e2"
+          }
+        }
+      }
+    }
+  }
+}

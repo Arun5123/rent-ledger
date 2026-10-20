@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "131517915847",
+    "project_id": "rentledger-prod-a1b2c",
+    "storage_bucket": "rentledger-prod-a1b2c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:131517915847:android:c2cee33791fb9970f6d4e2",
+        "android_client_info": {
+          "package_name": "com.rentledger.rentledger"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "131517915847-81ad4o922bpljohd6s10f9ieqrkk7ccv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rentledger.rentledger",
+            "certificate_hash": "79692552853aaaf8122a9c5de18376fd2d65f4f2"
+          }
+        },
+        {
+          "client_id": "131517915847-crgn67ra5a0eaujf91vka3sralup770i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB6iBj9744aReIEbiDBJmfuVUOChRD97k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "131517915847-crgn67ra5a0eaujf91vka3sralup770i.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "131517915847-15sme469gt14sg8mv7adk4it93vajitl.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.rentledger.rentledger"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

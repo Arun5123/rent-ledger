@@ -1,0 +1,73 @@
+name: rentledger
+description: "Rental & Property Management ledger for landlords"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # Firebase
+  firebase_core: ^3.8.0
+  firebase_auth: ^5.3.0
+  cloud_firestore: ^5.5.0
+
+  google_sign_in: ^6.2.2
+
+  # Charts & documents
+  fl_chart: ^0.69.2
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  excel: ^4.0.6
+  csv: ^6.0.0
+
+  # Local persistence & device
+  shared_preferences: ^2.3.2
+  connectivity_plus: ^6.0.5
+  path_provider: ^2.1.5
+  image_picker: ^1.1.2
+  permission_handler: ^11.3.1
+  share_plus: ^10.1.2
+  url_launcher: ^6.3.0
+
+  # Utilities
+  intl: ^0.19.0
+  http: ^1.2.2
+  crypto: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  image: ^4.3.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+# Launcher icons. The two source images in `assets/icon/` are produced by
+# `tool/generate_icon.dart`; regenerate them there rather than editing the PNGs.
+#
+# `adaptive_icon_foreground_inset` is 0 on purpose: `icon_foreground.png` is
+# already drawn at the size Android's 66dp safe circle allows, so letting the
+# plugin inset it a further 16% would shrink the mark twice.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#1B4D3E"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  adaptive_icon_foreground_inset: 0
+  remove_alpha_ios: true
