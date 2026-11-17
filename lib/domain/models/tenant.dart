@@ -37,6 +37,10 @@ class TenantExitDetails {
     this.amountDueFromTenant = 0,
     this.amountPaidByTenant = 0,
     this.paymentMethod,
+    this.refundPaymentMethod,
+    this.refundTransactionRef,
+    this.isProRataRent = false,
+    this.handoverChecklist = const <String>[],
     this.meterPhotoUrl,
     this.deductionReason,
     this.exitStatementUrl,
@@ -63,6 +67,18 @@ class TenantExitDetails {
 
   /// Payment method used for the exit settlement transaction (if any).
   final PaymentMethod? paymentMethod;
+
+  /// Payment method used to refund the deposit to tenant (if any).
+  final PaymentMethod? refundPaymentMethod;
+
+  /// Bank / UPI / Cheque reference for the deposit refund.
+  final String? refundTransactionRef;
+
+  /// Whether exit month rent was billed pro-rata based on actual days occupied.
+  final bool isProRataRent;
+
+  /// Completed move-out inspection and handover checklist items.
+  final List<String> handoverChecklist;
 
   /// Optional photo of the final electricity sub-meter reading.
   final String? meterPhotoUrl;
@@ -110,6 +126,21 @@ class TenantExitDetails {
               json['paymentMethod'],
               PaymentMethod.UPI,
             ),
+      refundPaymentMethod: json['refundPaymentMethod'] == null
+          ? null
+          : enumFromName(
+              PaymentMethod.values,
+              json['refundPaymentMethod'],
+              PaymentMethod.UPI,
+            ),
+      refundTransactionRef:
+          JsonUtils.toNullableStr(json['refundTransactionRef']),
+      isProRataRent: json['isProRataRent'] == true,
+      handoverChecklist: json['handoverChecklist'] is List
+          ? (json['handoverChecklist'] as List)
+              .map((e) => e.toString())
+              .toList()
+          : const <String>[],
       meterPhotoUrl: JsonUtils.toNullableStr(json['meterPhotoUrl']),
       deductionReason: JsonUtils.toNullableStr(json['deductionReason']),
       exitStatementUrl: JsonUtils.toNullableStr(json['exitStatementUrl']),
@@ -130,6 +161,10 @@ class TenantExitDetails {
         'amountDueFromTenant': JsonUtils.money(amountDueFromTenant),
         'amountPaidByTenant': JsonUtils.money(amountPaidByTenant),
         'paymentMethod': paymentMethod?.name,
+        'refundPaymentMethod': refundPaymentMethod?.name,
+        'refundTransactionRef': refundTransactionRef,
+        'isProRataRent': isProRataRent,
+        'handoverChecklist': handoverChecklist,
         'meterPhotoUrl': meterPhotoUrl,
         'deductionReason': deductionReason,
         'exitStatementUrl': exitStatementUrl,
@@ -149,6 +184,10 @@ class TenantExitDetails {
     double? amountDueFromTenant,
     double? amountPaidByTenant,
     PaymentMethod? paymentMethod,
+    PaymentMethod? refundPaymentMethod,
+    String? refundTransactionRef,
+    bool? isProRataRent,
+    List<String>? handoverChecklist,
     String? meterPhotoUrl,
     String? deductionReason,
     String? exitStatementUrl,
@@ -167,6 +206,10 @@ class TenantExitDetails {
         amountDueFromTenant: amountDueFromTenant ?? this.amountDueFromTenant,
         amountPaidByTenant: amountPaidByTenant ?? this.amountPaidByTenant,
         paymentMethod: paymentMethod ?? this.paymentMethod,
+        refundPaymentMethod: refundPaymentMethod ?? this.refundPaymentMethod,
+        refundTransactionRef: refundTransactionRef ?? this.refundTransactionRef,
+        isProRataRent: isProRataRent ?? this.isProRataRent,
+        handoverChecklist: handoverChecklist ?? this.handoverChecklist,
         meterPhotoUrl: meterPhotoUrl ?? this.meterPhotoUrl,
         deductionReason: deductionReason ?? this.deductionReason,
         exitStatementUrl: exitStatementUrl ?? this.exitStatementUrl,

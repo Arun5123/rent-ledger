@@ -273,7 +273,7 @@ class _HistoryViewState extends ConsumerState<_HistoryView> {
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) =>
                       _historyCard(context, filtered[index]),
                 ),
@@ -556,9 +556,9 @@ class _HistoryViewState extends ConsumerState<_HistoryView> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: Text(
         status.label,
@@ -640,7 +640,7 @@ class _RecordSettlementDialogState extends State<_RecordSettlementDialog> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<PaymentMethod>(
-                initialValue: _paymentMethod,
+                value: _paymentMethod,
                 decoration: const InputDecoration(labelText: 'Payment method'),
                 items: PaymentMethod.values.map((method) {
                   return DropdownMenuItem(

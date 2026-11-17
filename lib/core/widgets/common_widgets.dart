@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 export 'package:image_picker/image_picker.dart' show ImageSource, XFile;
 
+import '../errors/app_exception.dart';
 import '../theme/app_theme.dart';
 
 /// Small reusable building blocks shared across every screen.
@@ -46,7 +47,7 @@ class SectionHeader extends StatelessWidget {
             ],
           ),
         ),
-        ?trailing,
+        if (trailing != null) trailing!,
       ],
     );
   }
@@ -165,7 +166,7 @@ class EmptyState extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                color: theme.colorScheme.primaryContainer.withOpacity(0.5),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 36, color: theme.colorScheme.primary),
@@ -297,7 +298,7 @@ class KpiCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
+                      color: color.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(icon, size: 18, color: color),
@@ -374,7 +375,7 @@ class OfflineBanner extends StatelessWidget {
     if (!visible) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Material(
-      color: context.ledgerColors.pending.withValues(alpha: 0.15),
+      color: context.ledgerColors.pending.withOpacity(0.15),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
@@ -479,7 +480,14 @@ Future<XFile?> pickImageSafely(
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open image picker: $e')),
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              e,
+              fallback: 'Could not open image picker. Please check device permissions.',
+            ),
+          ),
+        ),
       );
     }
     return null;

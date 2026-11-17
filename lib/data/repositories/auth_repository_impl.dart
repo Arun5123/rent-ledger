@@ -111,18 +111,13 @@ class FirebaseAuthRepository implements AuthRepository {
           );
         }
         if (account == null) {
-          throw const AppException(
-            'Google sign-in was cancelled. Tap "Continue with Google" again '
-            'and pick an account.',
-          );
+          throw const AppException('Google sign-in was cancelled.');
         }
 
         final auth = await account.authentication;
         if (auth.idToken == null && auth.accessToken == null) {
           throw const AppException(
-            'Google returned no token for this account. Register this build\'s '
-            'SHA-1 fingerprint in the Firebase console and re-download '
-            'google-services.json.',
+            'Unable to complete Google sign-in. Please try again or sign in with email.',
           );
         }
 
@@ -142,29 +137,30 @@ class FirebaseAuthRepository implements AuthRepository {
         }
         final user = result.user;
         if (user == null) {
-          throw const AppException('Google sign-in failed. Please retry.');
+          throw const AppException('Google sign-in could not be completed. Please retry.');
         }
         return _map(user)!;
       });
 
-  /// Turns a Play-services/Google Identity status into an actionable message.
+  /// Turns a Play-services/Google Identity status into a user-friendly message.
   static String _googleMessage(PlatformException error) {
-    final details = '${error.code} ${error.message ?? ''}';
-    if (details.contains('10:') || details.contains('DEVELOPER_ERROR')) {
-      return 'Google sign-in is not configured for this build. Add the app\'s '
-          'SHA-1 fingerprint to the Android app in the Firebase console, then '
-          're-download google-services.json and rebuild.';
+    final details = '${error.code} ${error.message ?? ''}'.toLowerCase();
+    if (details.contains('10:') || details.contains('developer_error')) {
+      return 'Google sign-in is temporarily unavailable. Please sign in with email or phone.';
     }
     if (details.contains('12502') ||
         details.contains('12500') ||
         details.contains('12501') ||
-        details.contains('SIGN_IN_CANCELLED')) {
+        details.contains('sign_in_cancelled') ||
+        details.contains('sign_in_canceled') ||
+        details.contains('canceled') ||
+        details.contains('cancelled')) {
       return 'Google sign-in was cancelled.';
     }
-    if (details.contains('7:') || details.contains('NETWORK_ERROR')) {
+    if (details.contains('7:') || details.contains('network_error')) {
       return 'No internet connection. Check your network and retry.';
     }
-    return 'Google sign-in failed. ${error.message ?? ''}'.trim();
+    return 'Google sign-in could not be completed. Please try again or sign in with email.';
   }
 
   /// Firebase's own verdict once the Google token reaches it.
@@ -174,12 +170,10 @@ class FirebaseAuthRepository implements AuthRepository {
         return 'This email already has an account signed up with a password. '
             'Sign in with the email option instead.';
       case 'operation-not-allowed':
-        return 'Google sign-in is not enabled for this Firebase project. '
-            'Enable the Google provider in the console.';
+        return 'Google sign-in is currently not enabled. Please sign in with email or phone.';
       case 'internal-error':
       case 'invalid-credential':
-        return 'Google could not verify this account. Check that the SHA-1 '
-            'fingerprint is registered, then try again.';
+        return 'Unable to verify this Google account. Please try again or sign in with email.';
       default:
         return AppException.from(error).message;
     }

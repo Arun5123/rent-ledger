@@ -127,15 +127,27 @@ class _PropertyDetailScreenState extends ConsumerState<PropertyDetailScreen> {
         .read(propertyControllerProvider.notifier)
         .setArchived(property.propertyId, !property.isArchived);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok
-            ? (property.isArchived
-                ? '${property.propertyName} was restored.'
-                : '${property.propertyName} was archived.')
-            : 'Could not update the property. Please try again.'),
-      ),
-    );
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(property.isArchived
+              ? '${property.propertyName} was restored.'
+              : '${property.propertyName} was archived.'),
+        ),
+      );
+    } else {
+      final error = ref.read(propertyControllerProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not update the property. Please try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _confirmDelete(Property property) async {
@@ -160,9 +172,15 @@ class _PropertyDetailScreenState extends ConsumerState<PropertyDetailScreen> {
         context.go(AppRoutes.properties);
       }
     } else {
+      final error = ref.read(propertyControllerProvider).error;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not delete the property. Please try again.'),
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not delete the property. Please try again.',
+            ),
+          ),
         ),
       );
     }
@@ -535,13 +553,23 @@ class _OverviewTab extends ConsumerWidget {
         .read(propertyControllerProvider.notifier)
         .updateMeterReading(property.propertyId, reading);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok
-            ? 'Meter reading updated.'
-            : 'Could not update the reading. Please try again.'),
-      ),
-    );
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Meter reading updated.')),
+      );
+    } else {
+      final error = ref.read(propertyControllerProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not update the reading. Please try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 }
 /// Latest-first ledger entries for this property, with edit and delete.
@@ -568,7 +596,7 @@ class _TransactionsTab extends ConsumerWidget {
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           itemCount: transactions.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             if (index == 0) return OfflineBanner(visible: offline);
             final txn = transactions[index - 1];
@@ -751,13 +779,23 @@ class _TransactionsTab extends ConsumerWidget {
     final ok =
         await ref.read(transactionControllerProvider.notifier).delete(txn);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok
-            ? 'Entry deleted.'
-            : 'Could not delete the entry. Please try again.'),
-      ),
-    );
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Entry deleted.')),
+      );
+    } else {
+      final error = ref.read(transactionControllerProvider).error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not delete the entry. Please try again.',
+            ),
+          ),
+        ),
+      );
+    }
   }
 }
 /// Every tenant linked to this property, newest first.
@@ -784,7 +822,7 @@ class _HistoryTab extends ConsumerWidget {
         return ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           itemCount: tenants.length + 1,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             if (index == 0) return OfflineBanner(visible: offline);
             final tenant = tenants[index - 1];
@@ -1052,11 +1090,11 @@ class _DocumentsTabState extends ConsumerState<_DocumentsTab> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Card(
                   elevation: 0,
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(
-                      color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                      color: theme.colorScheme.outlineVariant.withOpacity(0.5),
                     ),
                   ),
                   child: ListTile(
@@ -1380,15 +1418,30 @@ class _DocumentsTabState extends ConsumerState<_DocumentsTab> {
           const SnackBar(content: Text('Document added.')),
         );
       } else {
+        final error = ref.read(tenantControllerProvider).error;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save document.')),
+          SnackBar(
+            content: Text(
+              AppException.userMessageOf(
+                error,
+                fallback: 'Could not save document. Please try again.',
+              ),
+            ),
+          ),
         );
       }
     } catch (error) {
       if (!mounted) return;
       setState(() => _uploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not upload document: $error')),
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not upload document. Please try again.',
+            ),
+          ),
+        ),
       );
     }
   }
@@ -1516,7 +1569,7 @@ class _DocumentThumbWithRemove extends StatelessWidget {
           right: 4,
           child: Container(
             decoration: BoxDecoration(
-              color: theme.colorScheme.error.withValues(alpha: 0.85),
+              color: theme.colorScheme.error.withOpacity(0.85),
               borderRadius: BorderRadius.circular(16),
             ),
             child: IconButton(
@@ -1701,7 +1754,10 @@ class _DocumentViewerPageState extends State<_DocumentViewerPage> {
                   // asset was refused, a socket error means the device never
                   // reached Cloudinary.
                   Text(
-                    '$error',
+                    AppException.userMessageOf(
+                      error,
+                      fallback: 'Unable to load preview. Please check your connection.',
+                    ),
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.error,
@@ -1736,7 +1792,7 @@ class _EmptyDocNote extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

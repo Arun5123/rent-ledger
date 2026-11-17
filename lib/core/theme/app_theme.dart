@@ -23,6 +23,7 @@ abstract final class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      splashFactory: InkRipple.splashFactory,
       colorScheme: scheme,
       scaffoldBackgroundColor:
           isLight ? const Color(0xFFF7F8F7) : scheme.surface,
@@ -45,7 +46,7 @@ abstract final class AppTheme {
         color: isLight ? Colors.white : scheme.surfaceContainerHigh,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+          side: BorderSide(color: scheme.outlineVariant.withOpacity(0.6)),
         ),
         clipBehavior: Clip.antiAlias,
       ),
@@ -145,7 +146,7 @@ abstract final class AppTheme {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outlineVariant.withValues(alpha: 0.7),
+        color: scheme.outlineVariant.withOpacity(0.7),
         thickness: 1,
         space: 1,
       ),

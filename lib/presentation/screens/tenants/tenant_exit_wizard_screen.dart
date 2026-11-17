@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/errors/app_exception.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_theme.dart';
@@ -44,6 +45,13 @@ class _TenantExitWizardScreenState
 
   int _step = 0;
   DateTime _exitDate = DateTime.now();
+  bool _isProRataExitMonth = true;
+
+  bool _checkNoticePeriod = false;
+  DateTime? _noticeDate;
+  int _requiredNoticeDays = 30;
+
+  Set<String> _completedChecklist = <String>{};
 
   double? _overridePendingRent;
   double? _overridePendingMaintenance;
@@ -53,6 +61,12 @@ class _TenantExitWizardScreenState
   final List<Deduction> _deductions = <Deduction>[];
 
   bool _depositRefunded = true;
+  final TextEditingController _refundAmountController =
+      TextEditingController();
+  final TextEditingController _refundRefController =
+      TextEditingController();
+  PaymentMethod _refundPaymentMethod = PaymentMethod.UPI;
+
   bool _paymentReceivedFromTenant = true;
   final TextEditingController _amountPaidByTenantController =
       TextEditingController();
@@ -63,9 +77,17 @@ class _TenantExitWizardScreenState
   String? _statementPath;
 
   @override
+  void initState() {
+    super.initState();
+    _completedChecklist = HandoverChecklistItems.defaults.toSet();
+  }
+
+  @override
   void dispose() {
     _meterController.dispose();
     _deductionReasonController.dispose();
+    _refundAmountController.dispose();
+    _refundRefController.dispose();
     _amountPaidByTenantController.dispose();
     super.dispose();
   }
@@ -334,16 +356,221 @@ class _TenantExitWizardScreenState
             title: const Text('Exit date'),
             subtitle: Text(Formatters.date(_exitDate)),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _pickExitDate,
+            onTap: () => _pickExitDate(tenant),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: SwitchListTile(
+            title: const Text('Pro-rata final month rent'),
+            subtitle: Text(
+              _isProRataExitMonth
+                  ? 'Bill ${_exitDate.day} of ${DateTime(_exitDate.year, _exitDate.month + 1, 0).day} days in ${Formatters.monthYear(_exitDate)}'
+                  : 'Bill the entire month of ${Formatters.monthYear(_exitDate)} in full',
+            ),
+            value: _isProRataExitMonth,
+            onChanged: (val) => setState(() => _isProRataExitMonth = val),
           ),
         ),
         const SizedBox(height: 12),
         DetailRow(label: 'Lease start', value: Formatters.date(tenant.leaseStartDate)),
         DetailRow(
-          label: 'Billed months',
-          value: '${breakdown.monthsBilled}',
+          label: 'Billing duration',
+          value: breakdown.isProRata
+              ? '${breakdown.monthsBilled} months (${breakdown.exitMonthDays}d pro-rata in exit month)'
+              : '${breakdown.monthsBilled} full months',
         ),
+        const SizedBox(height: 16),
+        _noticePeriodCard(breakdown.rentPerMonth),
+        const SizedBox(height: 12),
+        _handoverChecklistCard(),
       ],
+    );
+  }
+
+  Widget _noticePeriodCard(double rentPerMonth) {
+    final notice = _noticeDate ?? _exitDate.subtract(const Duration(days: 30));
+    final shortfall = SettlementCalculator.calculateNoticeShortfall(
+      noticeDate: notice,
+      exitDate: _exitDate,
+      requiredNoticeDays: _requiredNoticeDays,
+      rentPerMonth: rentPerMonth,
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Check notice period shortfall'),
+              subtitle: const Text(
+                'Deduct rent if tenant vacated without serving agreed notice',
+              ),
+              value: _checkNoticePeriod,
+              onChanged: (val) => setState(() => _checkNoticePeriod = val),
+            ),
+            if (_checkNoticePeriod) ...[
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_today_outlined),
+                title: const Text('Date notice was given'),
+                subtitle: Text(Formatters.date(notice)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: notice,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) setState(() => _noticeDate = picked);
+                },
+              ),
+              Row(
+                children: [
+                  const Text('Required notice: '),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _requiredNoticeDays,
+                    items: const [
+                      DropdownMenuItem(value: 15, child: Text('15 days')),
+                      DropdownMenuItem(value: 30, child: Text('30 days (1 mo)')),
+                      DropdownMenuItem(value: 60, child: Text('60 days (2 mo)')),
+                      DropdownMenuItem(value: 90, child: Text('90 days (3 mo)')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setState(() => _requiredNoticeDays = v);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (shortfall.shortfallDays > 0) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade700),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.amber.shade900),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Notice shortfall: ${shortfall.shortfallDays} days unserved.\n'
+                          'Rent deduction: ${Formatters.currency(shortfall.shortfallRent)}',
+                          style: TextStyle(
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () {
+                          final label =
+                              'Notice period shortfall (${shortfall.shortfallDays} days)';
+                          if (!_deductions.any((d) => d.label == label)) {
+                            setState(() {
+                              _deductions.add(Deduction(
+                                label: label,
+                                amount: shortfall.shortfallRent,
+                              ));
+                            });
+                            _showSnack('Added notice shortfall deduction.');
+                          } else {
+                            _showSnack('Notice shortfall already added.');
+                          }
+                        },
+                        child: const Text('Add'),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Full notice served (${_exitDate.difference(notice).inDays} days). No shortfall deduction.',
+                    style: TextStyle(
+                      color: context.ledgerColors.income,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _handoverChecklistCard() {
+    return Card(
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        leading: Icon(
+          _completedChecklist.length == HandoverChecklistItems.defaults.length
+              ? Icons.check_circle
+              : Icons.checklist_outlined,
+          color: _completedChecklist.length ==
+                  HandoverChecklistItems.defaults.length
+              ? context.ledgerColors.income
+              : null,
+        ),
+        title: const Text('Move-out handover checklist'),
+        subtitle: Text(
+          '${_completedChecklist.length} of ${HandoverChecklistItems.defaults.length} items verified',
+        ),
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() {
+                    if (_completedChecklist.length ==
+                        HandoverChecklistItems.defaults.length) {
+                      _completedChecklist.clear();
+                    } else {
+                      _completedChecklist =
+                          HandoverChecklistItems.defaults.toSet();
+                    }
+                  }),
+                  child: Text(
+                    _completedChecklist.length ==
+                            HandoverChecklistItems.defaults.length
+                        ? 'Uncheck all'
+                        : 'Check all',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final item in HandoverChecklistItems.defaults)
+            CheckboxListTile(
+              dense: true,
+              value: _completedChecklist.contains(item),
+              title: Text(item),
+              onChanged: (checked) {
+                setState(() {
+                  if (checked == true) {
+                    _completedChecklist.add(item);
+                  } else {
+                    _completedChecklist.remove(item);
+                  }
+                });
+              },
+            ),
+        ],
+      ),
     );
   }
 
@@ -352,7 +579,7 @@ class _TenantExitWizardScreenState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
+        color: theme.colorScheme.secondaryContainer.withOpacity(0.45),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -366,15 +593,21 @@ class _TenantExitWizardScreenState
     );
   }
 
-  Future<void> _pickExitDate() async {
+  Future<void> _pickExitDate(Tenant tenant) async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _exitDate,
-      firstDate: DateTime(now.year - 10),
+      firstDate: tenant.leaseStartDate,
       lastDate: DateTime(now.year + 5),
     );
     if (!mounted || picked == null) return;
+    if (picked.isBefore(tenant.leaseStartDate)) {
+      _showSnack(
+        'Exit date cannot be before lease start date (${Formatters.date(tenant.leaseStartDate)}).',
+      );
+      return;
+    }
     setState(() => _exitDate = picked);
   }
 
@@ -424,7 +657,7 @@ class _TenantExitWizardScreenState
           title: 'Deductions',
           subtitle: 'Anything withheld from the deposit',
           trailing: TextButton.icon(
-            onPressed: _addDeduction,
+            onPressed: () => _addDeduction(breakdown),
             icon: const Icon(Icons.add, size: 18),
             label: const Text('Add'),
           ),
@@ -515,10 +748,12 @@ class _TenantExitWizardScreenState
     onChanged(result);
   }
 
-  Future<void> _addDeduction() async {
+  Future<void> _addDeduction(SettlementBreakdown breakdown) async {
     final result = await showDialog<Deduction>(
       context: context,
-      builder: (context) => const _AddDeductionDialog(),
+      builder: (context) => _AddDeductionDialog(
+        rentPerMonth: breakdown.rentPerMonth,
+      ),
     );
 
     if (!mounted || result == null) return;
@@ -553,6 +788,18 @@ class _TenantExitWizardScreenState
           label: 'Advance deposit held',
           value: Formatters.currency(breakdown.advanceDeposit),
         ),
+        if (breakdown.isProRata)
+          DetailRow(
+            label: 'Exit month billing',
+            value:
+                '${breakdown.exitMonthDays} of ${breakdown.daysInExitMonth} days pro-rata',
+          ),
+        if (_completedChecklist.isNotEmpty)
+          DetailRow(
+            label: 'Handover checklist',
+            value:
+                '${_completedChecklist.length} of ${HandoverChecklistItems.defaults.length} items verified',
+          ),
         if (property.electricityBillingType ==
             ElectricityBillingType.SUB_METER) ...<Widget>[
           const SizedBox(height: 8),
@@ -683,9 +930,9 @@ class _TenantExitWizardScreenState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        border: Border.all(color: color.withOpacity(0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -737,9 +984,9 @@ class _TenantExitWizardScreenState
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
+            color: color.withOpacity(0.10),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withValues(alpha: 0.35)),
+            border: Border.all(color: color.withOpacity(0.35)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,15 +1029,78 @@ class _TenantExitWizardScreenState
         const SizedBox(height: 16),
         if (net > 0) ...<Widget>[
           Card(
-            child: SwitchListTile(
-              title: const Text('Deposit refunded to tenant'),
-              subtitle: Text(
-                'A refund of ${Formatters.currency(net)} will be recorded as an expense in the ledger.',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Deposit refunded to tenant'),
+                    subtitle: Text(
+                      _depositRefunded
+                          ? 'A refund transaction will be recorded as an expense in the ledger.'
+                          : 'Refund not issued yet (withheld pending final utility bills).',
+                    ),
+                    value: _depositRefunded,
+                    onChanged: _busy
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _depositRefunded = value;
+                              if (value &&
+                                  _refundAmountController.text.isEmpty) {
+                                _refundAmountController.text =
+                                    net.toStringAsFixed(0);
+                              }
+                            });
+                          },
+                  ),
+                  if (_depositRefunded) ...<Widget>[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _refundAmountController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Refund amount paid',
+                        helperText: 'Actual amount refunded to tenant now',
+                        prefixText: '₹ ',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<PaymentMethod>(
+                      value: _refundPaymentMethod,
+                      decoration: const InputDecoration(
+                        labelText: 'Refund payment mode',
+                      ),
+                      items: PaymentMethod.values.map((method) {
+                        return DropdownMenuItem<PaymentMethod>(
+                          value: method,
+                          child: Text(method.label),
+                        );
+                      }).toList(),
+                      onChanged: _busy
+                          ? null
+                          : (val) {
+                              if (val != null) {
+                                setState(() => _refundPaymentMethod = val);
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _refundRefController,
+                      decoration: const InputDecoration(
+                        labelText:
+                            'Payment reference / UTR / Cheque # (optional)',
+                        hintText: 'e.g. UPI Ref / Bank UTR #',
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              value: _depositRefunded,
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _depositRefunded = value),
             ),
           ),
         ] else if (net < 0) ...<Widget>[
@@ -837,7 +1147,7 @@ class _TenantExitWizardScreenState
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<PaymentMethod>(
-                      initialValue: _tenantPaymentMethod,
+                      value: _tenantPaymentMethod,
                       decoration: const InputDecoration(
                         labelText: 'Payment method',
                       ),
@@ -917,6 +1227,9 @@ class _TenantExitWizardScreenState
         finalMeterReading: finalMeterReading,
         deductions: _deductions,
         pendingOther: _overridePendingOther ?? 0,
+        isProRataExitMonth: _isProRataExitMonth,
+        noticeDate: _checkNoticePeriod ? _noticeDate : null,
+        requiredNoticeDays: _requiredNoticeDays,
       ),
     );
   }
@@ -948,9 +1261,18 @@ class _TenantExitWizardScreenState
     final amountPaid = (_paymentReceivedFromTenant && net < 0)
         ? (double.tryParse(_amountPaidByTenantController.text.trim()) ?? 0.0)
         : 0.0;
+    final refundAmount = (_depositRefunded && net > 0)
+        ? (double.tryParse(_refundAmountController.text.trim()) ?? net)
+        : 0.0;
     return breakdown.toExitDetails(
       deductionReason: reason.isEmpty ? null : reason,
       depositRefunded: _depositRefunded,
+      refundAmount: refundAmount,
+      refundPaymentMethod:
+          (_depositRefunded && net > 0) ? _refundPaymentMethod : null,
+      refundTransactionRef: (_depositRefunded && net > 0)
+          ? _refundRefController.text.trim()
+          : null,
       amountPaidByTenant: amountPaid,
       paymentMethod: (_paymentReceivedFromTenant && net < 0 && amountPaid > 0)
           ? _tenantPaymentMethod
@@ -961,6 +1283,8 @@ class _TenantExitWizardScreenState
       overridePendingEb: _overridePendingEb,
       overridePendingOther: _overridePendingOther,
       overrideDeductions: _deductions,
+      isProRataRent: _isProRataExitMonth,
+      handoverChecklist: _completedChecklist.toList(),
     );
   }
 
@@ -1038,6 +1362,8 @@ class _TenantExitWizardScreenState
         final net = _net(breakdown);
         if (net < 0 && _amountPaidByTenantController.text.isEmpty) {
           _amountPaidByTenantController.text = net.abs().toStringAsFixed(0);
+        } else if (net > 0 && _refundAmountController.text.isEmpty) {
+          _refundAmountController.text = net.toStringAsFixed(0);
         }
       }
       setState(() => _step = nextStep);
@@ -1119,6 +1445,15 @@ class _TenantExitWizardScreenState
         );
         return;
       }
+    } else if (net > 0 && _depositRefunded) {
+      final text = _refundAmountController.text.trim();
+      final parsed = double.tryParse(text);
+      if (parsed == null || parsed <= 0) {
+        _showSnack(
+          'Please enter a valid refund amount or turn off deposit refunded.',
+        );
+        return;
+      }
     }
     setState(() => _busy = true);
 
@@ -1131,7 +1466,13 @@ class _TenantExitWizardScreenState
     setState(() => _busy = false);
 
     if (!ok) {
-      _showSnack('We could not complete the exit. Please try again.');
+      final error = ref.read(tenantControllerProvider).error;
+      _showSnack(
+        AppException.userMessageOf(
+          error,
+          fallback: 'We could not complete the exit. Please try again.',
+        ),
+      );
       return;
     }
 
@@ -1269,7 +1610,11 @@ class _PromptAmountDialogState extends State<_PromptAmountDialog> {
 }
 
 class _AddDeductionDialog extends StatefulWidget {
-  const _AddDeductionDialog();
+  const _AddDeductionDialog({
+    this.rentPerMonth = 0,
+  });
+
+  final double rentPerMonth;
 
   @override
   State<_AddDeductionDialog> createState() => _AddDeductionDialogState();
@@ -1307,6 +1652,7 @@ class _AddDeductionDialogState extends State<_AddDeductionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AlertDialog(
       title: const Text('Add deduction'),
       content: SingleChildScrollView(
@@ -1314,7 +1660,85 @@ class _AddDeductionDialogState extends State<_AddDeductionDialog> {
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              Text(
+                'Quick presets',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (widget.rentPerMonth > 0)
+                    ActionChip(
+                      avatar: const Icon(Icons.format_paint, size: 14),
+                      label: const Text('Painting (1 mo)'),
+                      onPressed: () {
+                        _labelController.text =
+                            MoveOutDeductionPresets.paintingOneMonth;
+                        _amountController.text =
+                            widget.rentPerMonth.toStringAsFixed(0);
+                      },
+                    ),
+                  ActionChip(
+                    avatar: const Icon(Icons.cleaning_services, size: 14),
+                    label: const Text('Deep cleaning'),
+                    onPressed: () {
+                      _labelController.text =
+                          MoveOutDeductionPresets.deepCleaning;
+                      if (_amountController.text.isEmpty) {
+                        _amountController.text = '2500';
+                      }
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.plumbing, size: 14),
+                    label: const Text('Plumbing'),
+                    onPressed: () {
+                      _labelController.text =
+                          MoveOutDeductionPresets.plumbingRepair;
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.carpenter, size: 14),
+                    label: const Text('Carpentry'),
+                    onPressed: () {
+                      _labelController.text =
+                          MoveOutDeductionPresets.carpentryRepair;
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.electrical_services, size: 14),
+                    label: const Text('Electrical'),
+                    onPressed: () {
+                      _labelController.text =
+                          MoveOutDeductionPresets.electricalRepair;
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.key, size: 14),
+                    label: const Text('Keys / locks'),
+                    onPressed: () {
+                      _labelController.text =
+                          MoveOutDeductionPresets.keyReplacement;
+                    },
+                  ),
+                  ActionChip(
+                    avatar: const Icon(Icons.apartment, size: 14),
+                    label: const Text('Society dues'),
+                    onPressed: () {
+                      _labelController.text =
+                          MoveOutDeductionPresets.societyMaintenance;
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
               TextField(
                 controller: _labelController,
                 textCapitalization: TextCapitalization.sentences,

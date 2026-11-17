@@ -34,6 +34,7 @@ abstract final class LedgerCalculator {
     for (final txn in transactions) {
       final at = txn.recordedAt;
       if (at.isBefore(monthStart) || at.isAfter(monthEnd)) continue;
+      if (txn.isWaiver) continue;
       if (txn.isIncome) {
         income += txn.amount;
         if (txn.type == TransactionType.RENT_PAYMENT) rentCollected += txn.amount;
@@ -44,7 +45,7 @@ abstract final class LedgerCalculator {
 
     var lastMonthIncome = 0.0;
     for (final txn in transactions) {
-      if (!txn.isIncome) continue;
+      if (!txn.isIncome || txn.isWaiver) continue;
       final at = txn.recordedAt;
       if (at.isBefore(lastMonthStart) || at.isAfter(lastMonthEnd)) continue;
       lastMonthIncome += txn.amount;
@@ -105,61 +106,104 @@ abstract final class LedgerCalculator {
     );
   }
 
-  /// Expected-vs-paid position for one tenant in one month.
+  /// Expected-vs-paid position for one tenant across every month from the
+  /// lease start up to [month] (the reference "now"). Unlike the previous
+  /// single-month pass, this surfaces dues carried over from earlier months
+  /// (e.g. last month's unpaid rent) instead of only the current month.
   static TenantDue? dueForTenant({
     required Tenant tenant,
     required Property property,
     required List<LedgerTransaction> transactions,
     required DateTime month,
-    int? monthsElapsed,
   }) {
-    final start = Formatters.monthStart(month);
-    final end = Formatters.monthEnd(month);
-    final periodKey = Formatters.periodKey(month);
+    final refStart = Formatters.monthStart(month);
+    final refEnd = Formatters.monthEnd(month);
 
     if (!tenant.isActive) return null;
-    if (tenant.leaseStartDate.isAfter(end)) return null;
-
-    final cycles = monthsElapsed ?? 1;
+    final leaseStart = Formatters.monthStart(tenant.leaseStartDate);
+    if (leaseStart.isAfter(refEnd)) return null;
 
     final rent = tenant.rentFor(property.baseRent);
     final maintenance = tenant.maintenanceFor(property.baseMaintenance);
+    final monthlyRent = JsonUtils.money(rent + maintenance);
     final fixedEb = property.electricityBillingType == ElectricityBillingType.FIXED
         ? property.fixedEbAmount
         : 0.0;
 
-    var ebRaised = 0.0;
-    var paid = 0.0;
+    // Index the tenant's transactions by billing period so a payment recorded
+    // later (e.g. September's rent paid in October) still clears September's
+    // due. Transactions with no billing period fall back to their recorded
+    // month.
+    final byPeriod = <String, List<LedgerTransaction>>{};
     for (final txn in transactions) {
       if (txn.tenantId != tenant.tenantId) continue;
-      final at = txn.recordedAt;
-      final matchesPeriod = (txn.billingPeriod.isNotEmpty && txn.billingPeriod == periodKey) ||
-          (!at.isBefore(start) && !at.isAfter(end));
-      if (!matchesPeriod) continue;
-      if (txn.type == TransactionType.EB_BILL && txn.isIncome) {
-        ebRaised += txn.amount;
-      }
-      if (txn.type.isRecurringIncome && txn.isIncome) paid += txn.amount;
+      if (txn.recordedAt.isAfter(refEnd)) continue;
+      final period = txn.billingPeriod.isNotEmpty
+          ? txn.billingPeriod
+          : Formatters.periodKey(txn.recordedAt);
+      if (period.compareTo(Formatters.periodKey(refStart)) > 0) continue;
+      byPeriod.putIfAbsent(period, () => <LedgerTransaction>[]).add(txn);
     }
 
-    final expectedTotal = _monthsRent(rent, maintenance, cycles) +
-        math.max(ebRaised, fixedEb) * (ebRaised > 0 ? 1 : cycles);
-    final due = math.max(0.0, expectedTotal - paid);
+    var totalDue = 0.0;
+    var totalExpected = 0.0;
+    var totalPaid = 0.0;
+    final duePeriods = <String>[];
+
+    var cursor = leaseStart;
+    while (!cursor.isAfter(refStart)) {
+      final period = Formatters.periodKey(cursor);
+      final start = Formatters.monthStart(cursor);
+      final end = Formatters.monthEnd(cursor);
+
+      var ebRaised = 0.0;
+      var paid = 0.0;
+      var waived = 0.0;
+      for (final txn in (byPeriod[period] ?? const <LedgerTransaction>[])) {
+        final at = txn.recordedAt;
+        final recordedInMonth = !at.isBefore(start) && !at.isAfter(end);
+        final matchesBilling =
+            txn.billingPeriod.isNotEmpty && txn.billingPeriod == period;
+        if (!recordedInMonth && !matchesBilling) continue;
+        if (txn.isWaiver) {
+          waived += txn.amount;
+          continue;
+        }
+        if (txn.type == TransactionType.EB_BILL && txn.isIncome) {
+          ebRaised += txn.amount;
+        }
+        if (txn.type.isRecurringIncome && txn.isIncome) paid += txn.amount;
+      }
+
+      final expectedEb = fixedEb > 0 ? fixedEb : ebRaised;
+      final expectedMonth = math.max(0.0, rent + maintenance + expectedEb - waived);
+      final monthDue = math.max(0.0, expectedMonth - paid);
+
+      totalExpected += expectedMonth;
+      totalPaid += paid;
+      if (monthDue > 0.5) {
+        totalDue += monthDue;
+        duePeriods.add(period);
+      }
+
+      cursor = DateTime(cursor.year, cursor.month + 1);
+    }
+
+    if (totalDue <= 0.5) return null;
 
     return TenantDue(
       propertyId: property.propertyId,
       propertyName: property.propertyName,
       tenantId: tenant.tenantId,
       tenantName: tenant.name,
-      dueAmount: JsonUtils.money(due),
-      expectedAmount: JsonUtils.money(expectedTotal),
-      paidAmount: JsonUtils.money(paid),
+      dueAmount: JsonUtils.money(totalDue),
+      expectedAmount: JsonUtils.money(totalExpected),
+      paidAmount: JsonUtils.money(totalPaid),
+      monthlyRent: monthlyRent,
+      duePeriods: duePeriods,
       phone: tenant.phone.isEmpty ? null : tenant.phone,
     );
   }
-
-  static double _monthsRent(double rent, double maintenance, int cycles) =>
-      (rent + maintenance) * cycles;
 
   static List<TrendPoint> trendFromLedgers(List<MonthlyLedger> ledgers) {
     final sorted = [...ledgers]..sort((a, b) => a.period.compareTo(b.period));
@@ -191,6 +235,7 @@ abstract final class LedgerCalculator {
       for (final txn in transactions) {
         final at = txn.recordedAt;
         if (at.isBefore(start) || at.isAfter(end)) continue;
+        if (txn.isWaiver) continue;
         if (txn.isIncome) {
           income += txn.amount;
         } else {
@@ -254,6 +299,10 @@ abstract final class LedgerCalculator {
     for (final txn in transactions) {
       final at = txn.recordedAt;
       if (at.isBefore(start) || at.isAfter(end)) continue;
+      if (txn.isWaiver) {
+        count++;
+        continue;
+      }
       count++;
       final summary = breakdown.putIfAbsent(
         txn.propertyId,

@@ -255,7 +255,7 @@ class TrendPoint {
   double get net => income - expenses;
 }
 
-/// One tenant that still owes money for the current month.
+/// One tenant that still owes money for one or more months.
 class TenantDue {
   const TenantDue({
     required this.propertyId,
@@ -266,6 +266,8 @@ class TenantDue {
     required this.expectedAmount,
     required this.paidAmount,
     this.phone,
+    this.monthlyRent = 0,
+    this.duePeriods = const <String>[],
   });
 
   final String propertyId;
@@ -276,6 +278,12 @@ class TenantDue {
   final double expectedAmount;
   final double paidAmount;
   final String? phone;
+
+  /// Effective monthly rent (+ maintenance) for this tenant.
+  final double monthlyRent;
+
+  /// Period keys (`YYYY-MM`) that still carry an unpaid balance, oldest first.
+  final List<String> duePeriods;
 
   double get progress => expectedAmount <= 0 ? 0 : paidAmount / expectedAmount;
 }

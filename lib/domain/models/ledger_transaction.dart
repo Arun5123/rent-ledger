@@ -155,6 +155,8 @@ class LedgerTransaction {
   bool get isExpense => category == TransactionCategory.EXPENSE;
   double get signedAmount => isIncome ? amount : -amount;
 
+  bool get isWaiver => type == TransactionType.WAIVER;
+
   factory LedgerTransaction.fromJson(
     String transactionId,
     Map<String, dynamic> json,

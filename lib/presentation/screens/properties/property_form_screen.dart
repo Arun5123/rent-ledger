@@ -198,9 +198,10 @@ class _PropertyFormScreenState extends ConsumerState<PropertyFormScreen> {
 
   void _showError() {
     final error = ref.read(propertyControllerProvider).error;
-    final message = error is AppException
-        ? error.message
-        : 'Could not save the property. Please try again.';
+    final message = AppException.userMessageOf(
+      error,
+      fallback: 'Could not save the property. Please try again.',
+    );
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
@@ -262,7 +263,7 @@ class _PropertyFormScreenState extends ConsumerState<PropertyFormScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<PropertyType>(
-              initialValue: _type,
+              value: _type,
               decoration: const InputDecoration(labelText: 'Property type'),
               items: PropertyType.values
                   .map(
@@ -276,7 +277,7 @@ class _PropertyFormScreenState extends ConsumerState<PropertyFormScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<PropertyStatus>(
-              initialValue: _status,
+              value: _status,
               decoration: InputDecoration(
                 labelText: 'Status',
                 helperText: _statusLocked
@@ -321,7 +322,7 @@ class _PropertyFormScreenState extends ConsumerState<PropertyFormScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<ElectricityBillingType>(
-              initialValue: _billingType,
+              value: _billingType,
               decoration: const InputDecoration(labelText: 'Electricity billing'),
               items: ElectricityBillingType.values
                   .map(

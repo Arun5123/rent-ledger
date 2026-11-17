@@ -137,7 +137,7 @@ class _TransactionEntrySheetState
       );
       ref.listenManual(
         propertyProvider(widget.propertyId),
-        (_, _) => _prefillEbFromProperty(),
+        (prev, next) => _prefillEbFromProperty(),
       );
     }
   }
@@ -230,6 +230,9 @@ class _TransactionEntrySheetState
     _ebError = null;
     if (!type.requiresTenant) _tenantId = null;
     if (type.usesMeterReading) _syncEbAmount();
+    if (type == TransactionType.WAIVER) {
+      _category = TransactionCategory.INCOME;
+    }
     setState(() {});
   }
 
@@ -449,6 +452,11 @@ class _TransactionEntrySheetState
       return;
     }
 
+    if (_type == TransactionType.WAIVER && _notes.text.trim().isEmpty) {
+      _showMessage('Notes are mandatory for fee waivers.');
+      return;
+    }
+
     if (_type.usesMeterReading) {
       final details = _computeEb();
       if (details == null) {
@@ -520,13 +528,22 @@ class _TransactionEntrySheetState
         }
       } else {
         setState(() => _saving = false);
-        _showMessage('Could not save the entry. Please try again.');
+        final error = ref.read(transactionControllerProvider).error;
+        _showMessage(
+          AppException.userMessageOf(
+            error,
+            fallback: 'Could not save the entry. Please try again.',
+          ),
+        );
       }
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
       _showMessage(
-        error is AppException ? error.message : 'Could not save the entry.',
+        AppException.userMessageOf(
+          error,
+          fallback: 'Could not save the entry. Please try again.',
+        ),
       );
     }
   }
@@ -665,6 +682,35 @@ class _TransactionEntrySheetState
                     .toList(growable: false),
               ),
               const SizedBox(height: 16),
+              if (_type == TransactionType.WAIVER)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Card(
+                    color: theme.colorScheme.tertiaryContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(Icons.info_outline,
+                              size: 18,
+                              color: theme.colorScheme.onTertiaryContainer),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Fee Waiver — this amount will be deducted from '
+                              'the tenant\'s pending dues. It is not recorded '
+                              'as income or expense.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
               Row(
                 children: <Widget>[
                   Expanded(
@@ -704,7 +750,7 @@ class _TransactionEntrySheetState
                 DropdownButtonFormField<String>(
                   key: ValueKey<TransactionType>(_type),
                   isExpanded: true,
-                  initialValue: tenantValue,
+                  value: tenantValue,
                   decoration: const InputDecoration(labelText: 'Tenant'),
                   items: tenantOptions.entries
                       .map(
@@ -725,7 +771,7 @@ class _TransactionEntrySheetState
               if (_type == TransactionType.PROPERTY_EXPENSE) ...<Widget>[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<ExpenseCategory>(
-                  initialValue:
+                  value:
                       _expenseCategory ?? ExpenseCategory.MAINTENANCE,
                   decoration: const InputDecoration(
                     labelText: 'Expense category',
@@ -1001,10 +1047,19 @@ class _TransactionEntrySheetState
                 controller: _notes,
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (optional)',
+                decoration: InputDecoration(
+                  labelText: _type == TransactionType.WAIVER
+                      ? 'Waiver reason / product notes (required)'
+                      : 'Notes (optional)',
                   alignLabelWithHint: true,
                 ),
+                validator: (value) {
+                  if (_type == TransactionType.WAIVER &&
+                      (value == null || value.trim().isEmpty)) {
+                    return 'Notes / reason is mandatory for fee waivers.';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               if (_receiptUrl == null)

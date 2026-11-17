@@ -17,6 +17,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // Enable core library desugaring (required by flutter_local_notifications).
+    // Set via the CompileOptions bean since the Kotlin DSL property name varies by AGP.
+    compileOptions.isCoreLibraryDesugaringEnabled = true
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
@@ -33,6 +36,15 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        getByName("debug") {
+            val projectDebugKeystore = file("debug.keystore")
+            if (projectDebugKeystore.exists()) {
+                storeFile = projectDebugKeystore
+            }
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -44,4 +56,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

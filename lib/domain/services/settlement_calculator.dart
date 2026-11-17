@@ -18,6 +18,9 @@ class SettlementInput {
     this.deductions = const <Deduction>[],
     this.pendingOther = 0,
     this.ratePerUnitOverride,
+    this.isProRataExitMonth = false,
+    this.noticeDate,
+    this.requiredNoticeDays = 30,
   });
 
   final Property property;
@@ -32,6 +35,39 @@ class SettlementInput {
   final List<Deduction> deductions;
   final double pendingOther;
   final double? ratePerUnitOverride;
+
+  /// Whether the exit month rent is calculated pro-rata based on actual days.
+  final bool isProRataExitMonth;
+
+  /// Date when tenant provided vacating notice (if any).
+  final DateTime? noticeDate;
+
+  /// Required notice period days in agreement (default 30).
+  final int requiredNoticeDays;
+}
+
+/// Standard move-out deduction presets commonly used by apartment & house owners.
+abstract final class MoveOutDeductionPresets {
+  static const String paintingOneMonth = 'Painting & whitewashing (1 month rent)';
+  static const String paintingCustom = 'Painting & whitewashing charges';
+  static const String deepCleaning = 'House deep cleaning & sanitization';
+  static const String plumbingRepair = 'Plumbing & sanitary fixture repairs';
+  static const String carpentryRepair = 'Carpentry, door & lock repairs';
+  static const String electricalRepair = 'Electrical fixtures & appliance repairs';
+  static const String keyReplacement = 'Lost key & lock replacement';
+  static const String societyMaintenance = 'Pending society maintenance dues';
+  static const String noticeShortfall = 'Notice period shortfall';
+}
+
+/// Standard handover & inspection checklist items before returning deposit.
+abstract final class HandoverChecklistItems {
+  static const List<String> defaults = <String>[
+    'All door, grill & wardrobe keys handed over',
+    'Final electricity sub-meter reading recorded & photographed',
+    'Electrical appliances (geyser, fans, AC remotes) verified working',
+    'Walls, tiles & plumbing fixtures inspected for damage',
+    'Society / Building Move-Out clearance (NOC) completed',
+  ];
 }
 
 /// Fully explainable settlement breakdown.
@@ -60,6 +96,11 @@ class SettlementBreakdown {
     required this.rentPerMonth,
     required this.maintenancePerMonth,
     required this.ratePerUnit,
+    this.isProRata = false,
+    this.exitMonthDays = 0,
+    this.daysInExitMonth = 0,
+    this.exitMonthRent = 0,
+    this.exitMonthMaintenance = 0,
   });
 
   final double advanceDeposit;
@@ -85,6 +126,12 @@ class SettlementBreakdown {
   final double maintenancePerMonth;
   final double ratePerUnit;
 
+  final bool isProRata;
+  final int exitMonthDays;
+  final int daysInExitMonth;
+  final double exitMonthRent;
+  final double exitMonthMaintenance;
+
   double get totalPending =>
       pendingRent + pendingMaintenance + pendingEb + pendingOther;
 
@@ -104,6 +151,9 @@ class SettlementBreakdown {
     String? notes,
     String? exitStatementUrl,
     bool depositRefunded = false,
+    double? refundAmount,
+    PaymentMethod? refundPaymentMethod,
+    String? refundTransactionRef,
     double amountPaidByTenant = 0,
     PaymentMethod? paymentMethod,
     String? meterPhotoUrl,
@@ -112,6 +162,8 @@ class SettlementBreakdown {
     double? overridePendingEb,
     double? overridePendingOther,
     List<Deduction>? overrideDeductions,
+    bool? isProRataRent,
+    List<String>? handoverChecklist,
   }) {
     final rent = overridePendingRent ?? pendingRent;
     final maintenance = overridePendingMaintenance ?? pendingMaintenance;
@@ -125,6 +177,12 @@ class SettlementBreakdown {
     final paid = math.min(totalDue, JsonUtils.money(amountPaidByTenant));
     final remainingDue = math.max(0.0, totalDue - paid);
 
+    final actualRefund = depositRefunded
+        ? (refundAmount != null
+            ? math.max(0.0, JsonUtils.money(refundAmount))
+            : math.max(0.0, JsonUtils.money(net)))
+        : 0.0;
+
     return TenantExitDetails(
       exitedAt: DateTime.now(),
       advanceDeposit: advanceDeposit,
@@ -134,10 +192,14 @@ class SettlementBreakdown {
       pendingEb: eb,
       pendingOther: other,
       deductions: ded,
-      depositRefunded: depositRefunded ? math.max(0, JsonUtils.money(net)) : 0,
+      depositRefunded: actualRefund,
       amountDueFromTenant: remainingDue,
       amountPaidByTenant: paid,
       paymentMethod: paymentMethod,
+      refundPaymentMethod: refundPaymentMethod,
+      refundTransactionRef: refundTransactionRef,
+      isProRataRent: isProRataRent ?? isProRata,
+      handoverChecklist: handoverChecklist ?? const <String>[],
       meterPhotoUrl: meterPhotoUrl,
       deductionReason: deductionReason,
       exitStatementUrl: exitStatementUrl,
@@ -166,8 +228,46 @@ abstract final class SettlementCalculator {
       input.exitDate,
     );
 
-    final expectedRent = rentPerMonth * months;
-    final expectedMaintenance = maintenancePerMonth * months;
+    final daysInExitMonth =
+        DateTime(input.exitDate.year, input.exitDate.month + 1, 0).day;
+    final exitMonthDays = input.exitDate.day;
+
+    final double expectedRent;
+    final double expectedMaintenance;
+    final double exitMonthRent;
+    final double exitMonthMaintenance;
+
+    if (input.isProRataExitMonth) {
+      final start = tenant.leaseStartDate;
+      final end = input.exitDate;
+      final sameMonth = start.year == end.year && start.month == end.month;
+
+      if (sameMonth) {
+        final daysOccupied = math.max(1, end.difference(start).inDays + 1);
+        final clampedDays = math.min(daysInExitMonth, daysOccupied);
+        exitMonthRent = (rentPerMonth / daysInExitMonth) * clampedDays;
+        exitMonthMaintenance =
+            (maintenancePerMonth / daysInExitMonth) * clampedDays;
+        expectedRent = exitMonthRent;
+        expectedMaintenance = exitMonthMaintenance;
+      } else {
+        final priorFullMonths = math.max(
+          0,
+          (end.year - start.year) * 12 + (end.month - start.month),
+        );
+        exitMonthRent = (rentPerMonth / daysInExitMonth) * exitMonthDays;
+        exitMonthMaintenance =
+            (maintenancePerMonth / daysInExitMonth) * exitMonthDays;
+        expectedRent = (priorFullMonths * rentPerMonth) + exitMonthRent;
+        expectedMaintenance =
+            (priorFullMonths * maintenancePerMonth) + exitMonthMaintenance;
+      }
+    } else {
+      expectedRent = rentPerMonth * months;
+      expectedMaintenance = maintenancePerMonth * months;
+      exitMonthRent = rentPerMonth;
+      exitMonthMaintenance = maintenancePerMonth;
+    }
 
     final previousReading = property.currentEbMeterReading;
     final unitsConsumed = input.finalMeterReading == null
@@ -185,7 +285,10 @@ abstract final class SettlementCalculator {
 
     final expectedEb = switch (property.electricityBillingType) {
       ElectricityBillingType.SUB_METER => ebBillsRaised + exitMeterCharge,
-      ElectricityBillingType.FIXED => property.fixedEbAmount * months,
+      ElectricityBillingType.FIXED => input.isProRataExitMonth
+          ? (property.fixedEbAmount * math.max(0, months - 1)) +
+              (property.fixedEbAmount / daysInExitMonth) * exitMonthDays
+          : property.fixedEbAmount * months,
       ElectricityBillingType.DIRECT_EB => 0.0,
     };
 
@@ -240,7 +343,32 @@ abstract final class SettlementCalculator {
       rentPerMonth: rentPerMonth,
       maintenancePerMonth: maintenancePerMonth,
       ratePerUnit: ratePerUnit,
+      isProRata: input.isProRataExitMonth,
+      exitMonthDays: exitMonthDays,
+      daysInExitMonth: daysInExitMonth,
+      exitMonthRent: JsonUtils.money(exitMonthRent),
+      exitMonthMaintenance: JsonUtils.money(exitMonthMaintenance),
     );
+  }
+
+  /// Computes any shortfall in notice period and the corresponding rent deduction.
+  ///
+  /// Rental agreements typically require 30 days notice. If a tenant serves
+  /// fewer days, the landlord is entitled to deduct rent for the unserved shortfall.
+  static ({int shortfallDays, double shortfallRent}) calculateNoticeShortfall({
+    required DateTime noticeDate,
+    required DateTime exitDate,
+    required int requiredNoticeDays,
+    required double rentPerMonth,
+  }) {
+    if (requiredNoticeDays <= 0) {
+      return (shortfallDays: 0, shortfallRent: 0.0);
+    }
+    final daysServed = exitDate.difference(noticeDate).inDays;
+    final shortfallDays = math.max(0, requiredNoticeDays - daysServed);
+    final dailyRate = rentPerMonth / 30.0;
+    final shortfallRent = JsonUtils.money(shortfallDays * dailyRate);
+    return (shortfallDays: shortfallDays, shortfallRent: shortfallRent);
   }
 
   /// How many rent cycles a tenant has completed, counting the exit month.

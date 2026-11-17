@@ -149,7 +149,13 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
             if (!completer.isCompleted) completer.complete(true);
           },
           onError: (message) {
-            state = state.copyWith(sendingCode: false, error: message);
+            state = state.copyWith(
+              sendingCode: false,
+              error: AppException.sanitizeMessage(
+                message,
+                fallback: 'Could not send OTP. Please try again.',
+              ),
+            );
             if (!completer.isCompleted) completer.complete(false);
           },
           onAutoVerified: (verificationId, code) async {
@@ -203,7 +209,10 @@ class PhoneAuthController extends Notifier<PhoneAuthState> {
     } catch (error) {
       state = state.copyWith(
         verifying: false,
-        error: error is AppException ? error.message : 'Verification failed.',
+        error: AppException.userMessageOf(
+          error,
+          fallback: 'Verification failed. Please try again.',
+        ),
       );
       return null;
     }
@@ -300,5 +309,5 @@ final authActionControllerProvider =
 final authErrorProvider = Provider<String?>((ref) {
   final error = ref.watch(authActionControllerProvider).error;
   if (error == null) return null;
-  return error is AppException ? error.message : error.toString();
+  return AppException.userMessageOf(error);
 });

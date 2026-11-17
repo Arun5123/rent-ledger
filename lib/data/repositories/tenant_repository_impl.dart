@@ -302,6 +302,10 @@ class FirestoreTenantRepository implements TenantRepository {
           transaction.update(propertyRef, propertyPatch);
 
           if (refundRef != null) {
+            final refText = details.refundTransactionRef != null &&
+                    details.refundTransactionRef!.isNotEmpty
+                ? ' (Ref: ${details.refundTransactionRef})'
+                : '';
             final refund = LedgerTransaction(
               transactionId: refundRef.id,
               propertyId: property.propertyId,
@@ -311,9 +315,11 @@ class FirestoreTenantRepository implements TenantRepository {
               type: TransactionType.ADVANCE_REFUND,
               category: TransactionCategory.EXPENSE,
               amount: details.depositRefunded,
-              paymentMethod: details.paymentMethod ?? PaymentMethod.UPI,
+              paymentMethod: details.refundPaymentMethod ??
+                  details.paymentMethod ??
+                  PaymentMethod.UPI,
               billingPeriod: _periodKey(details.exitedAt),
-              notes: 'Security deposit refund on exit settlement',
+              notes: 'Security deposit refund on exit settlement$refText',
               recordedAt: details.exitedAt,
               createdBy: uid,
               createdAt: DateTime.now(),

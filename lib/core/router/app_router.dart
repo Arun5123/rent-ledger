@@ -54,8 +54,8 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
   ref
-    ..listen(authStateProvider, (_, _) => refresh.value++)
-    ..listen(onboardingCompleteProvider, (_, _) => refresh.value++)
+    ..listen(authStateProvider, (prev, next) => refresh.value++)
+    ..listen(onboardingCompleteProvider, (prev, next) => refresh.value++)
     ..onDispose(refresh.dispose);
 
   return GoRouter(

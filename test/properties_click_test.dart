@@ -65,6 +65,7 @@ void main() {
         container: container,
         child: MaterialApp.router(
           routerConfig: router,
+          theme: ThemeData(splashFactory: InkRipple.splashFactory),
         ),
       ),
     );

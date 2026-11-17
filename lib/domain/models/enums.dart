@@ -82,7 +82,8 @@ enum TransactionType {
   ADVANCE_RECEIVED,
   ADVANCE_REFUND,
   PROPERTY_EXPENSE,
-  OTHER;
+  OTHER,
+  WAIVER;
 
   String get label => switch (this) {
         TransactionType.RENT_PAYMENT => 'Rent',
@@ -93,6 +94,7 @@ enum TransactionType {
         TransactionType.ADVANCE_REFUND => 'Advance refund',
         TransactionType.PROPERTY_EXPENSE => 'Property expense',
         TransactionType.OTHER => 'Other',
+        TransactionType.WAIVER => 'Fee Waiver',
       };
 
   TransactionCategory get defaultCategory => switch (this) {

@@ -76,10 +76,8 @@ class CloudinaryStorageRepository implements StorageRepository {
         } catch (_) {}
 
         throw AppException(
-          cloudMessage != null && cloudMessage.isNotEmpty
-              ? 'Upload failed (${response.statusCode}): $cloudMessage'
-              : 'Upload failed (${response.statusCode}). Confirm the Cloudinary '
-                  'preset is set to unsigned.',
+          'Failed to upload file. Please check your internet connection and try again.',
+          cause: 'Upload failed (${response.statusCode}): ${cloudMessage ?? body}',
         );
       }
 
@@ -96,7 +94,7 @@ class CloudinaryStorageRepository implements StorageRepository {
       }
 
       if (url is! String || url.isEmpty) {
-        throw const AppException('Cloudinary did not return a file URL.');
+        throw const AppException('Failed to upload file. Please try again.');
       }
       return url;
     } on AppException {

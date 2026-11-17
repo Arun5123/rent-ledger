@@ -145,6 +145,126 @@ void main() {
       expect(partialPaymentDetails.amountDueFromTenant, totalDue - 1000);
       expect(partialPaymentDetails.paymentMethod, PaymentMethod.CASH);
     });
+
+    test('computes pro-rata rent for exit month when isProRataExitMonth is true', () {
+      final breakdown = SettlementCalculator.calculate(
+        SettlementInput(
+          property: property,
+          tenant: tenant,
+          transactions: transactions,
+          exitDate: DateTime(2026, 3, 15),
+          finalMeterReading: 1050,
+          isProRataExitMonth: true,
+        ),
+      );
+
+      // Jan and Feb are billed full (2 * 10,000 = 20,000).
+      // March has 31 days. 15 days = (10,000 / 31) * 15 = 4838.71.
+      expect(breakdown.isProRata, isTrue);
+      expect(breakdown.exitMonthDays, 15);
+      expect(breakdown.daysInExitMonth, 31);
+      expect(breakdown.expectedRent, closeTo(24838.71, 0.05));
+      expect(breakdown.expectedMaintenance, closeTo(1241.94, 0.05));
+      // Paid rent was 20,000, so pending rent is ~4838.71.
+      expect(breakdown.pendingRent, closeTo(4838.71, 0.05));
+    });
+
+    test('computes pro-rata rent when tenancy is entirely within the same month', () {
+      final shortTenant = tenant.copyWith(
+        leaseStartDate: DateTime(2026, 3, 5),
+      );
+      final breakdown = SettlementCalculator.calculate(
+        SettlementInput(
+          property: property,
+          tenant: shortTenant,
+          transactions: const <LedgerTransaction>[],
+          exitDate: DateTime(2026, 3, 20),
+          isProRataExitMonth: true,
+        ),
+      );
+
+      // March 5 to March 20 = 16 days.
+      // (10,000 / 31) * 16 = 5161.29.
+      expect(breakdown.isProRata, isTrue);
+      expect(breakdown.expectedRent, closeTo(5161.29, 0.05));
+    });
+
+    test('calculateNoticeShortfall computes shortfall rent when notice is unserved', () {
+      final notice = DateTime(2026, 3, 1);
+      final exit = DateTime(2026, 3, 15);
+      // 14 days served out of 30 days required => 16 days shortfall.
+      final result = SettlementCalculator.calculateNoticeShortfall(
+        noticeDate: notice,
+        exitDate: exit,
+        requiredNoticeDays: 30,
+        rentPerMonth: 15000,
+      );
+
+      expect(result.shortfallDays, 16);
+      // 16 days * (15000 / 30) = 8000
+      expect(result.shortfallRent, 8000.0);
+    });
+
+    test('calculateNoticeShortfall returns zero shortfall when full notice served', () {
+      final notice = DateTime(2026, 2, 1);
+      final exit = DateTime(2026, 3, 15); // > 40 days
+      final result = SettlementCalculator.calculateNoticeShortfall(
+        noticeDate: notice,
+        exitDate: exit,
+        requiredNoticeDays: 30,
+        rentPerMonth: 15000,
+      );
+
+      expect(result.shortfallDays, 0);
+      expect(result.shortfallRent, 0.0);
+    });
+
+    test('captures refund details, transaction ref, and handover checklist in TenantExitDetails', () {
+      final breakdown = SettlementCalculator.calculate(
+        SettlementInput(
+          property: property,
+          tenant: tenant,
+          transactions: transactions,
+          exitDate: DateTime(2026, 3, 15),
+          finalMeterReading: 1050,
+          deductions: const <Deduction>[
+            Deduction(label: MoveOutDeductionPresets.paintingOneMonth, amount: 10000),
+            Deduction(label: MoveOutDeductionPresets.deepCleaning, amount: 2500),
+          ],
+        ),
+      );
+
+      final checklist = [
+        'All door, grill & wardrobe keys handed over',
+        'Final electricity sub-meter reading recorded & photographed',
+      ];
+
+      final exitDetails = breakdown.toExitDetails(
+        depositRefunded: true,
+        refundAmount: 5000,
+        refundPaymentMethod: PaymentMethod.BANK_TRANSFER,
+        refundTransactionRef: 'HDFC12345678',
+        deductionReason: 'Painting and deep cleaning deducted per agreement',
+        handoverChecklist: checklist,
+      );
+
+      expect(exitDetails.depositRefunded, 5000);
+      expect(exitDetails.refundPaymentMethod, PaymentMethod.BANK_TRANSFER);
+      expect(exitDetails.refundTransactionRef, 'HDFC12345678');
+      expect(exitDetails.handoverChecklist, checklist);
+      expect(exitDetails.deductions.length, 2);
+
+      // JSON serialization & deserialization roundtrip
+      final json = exitDetails.toJson();
+      final restored = TenantExitDetails.fromJson(json);
+
+      expect(restored.depositRefunded, 5000);
+      expect(restored.refundPaymentMethod, PaymentMethod.BANK_TRANSFER);
+      expect(restored.refundTransactionRef, 'HDFC12345678');
+      expect(restored.handoverChecklist, checklist);
+      expect(restored.deductions.length, 2);
+      expect(restored.deductionReason, 'Painting and deep cleaning deducted per agreement');
+    });
   });
 }
 

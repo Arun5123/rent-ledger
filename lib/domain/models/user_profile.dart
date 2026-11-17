@@ -25,7 +25,8 @@ class UserProfile {
   final double defaultRatePerUnit;
   final bool notificationsEnabled;
 
-  /// Day of month (1–28) on which rent reminders are sent.
+  /// Day of month rent reminders are sent (1, 5, 10, 15 or 30). `0` means
+  /// reminders are turned off.
   final int rentReminderDay;
   final bool onboardingComplete;
   final DateTime createdAt;

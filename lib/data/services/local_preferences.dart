@@ -45,6 +45,7 @@ class LocalPreferences {
   Future<void> setNotificationsEnabled(bool value) =>
       _prefs.setBool(AppConstants.prefNotificationsEnabled, value);
 
+  /// Reminder day of month (1, 5, 10, 15 or 30). `0` means reminders are off.
   int get rentReminderDay =>
       _prefs.getInt(AppConstants.prefRentReminderDay) ?? 1;
 

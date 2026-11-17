@@ -78,6 +78,10 @@ class SettlementStatementPdfBuilder implements SettlementStatementBuilder {
                 ('Lease end', Formatters.date(tenant.leaseEndDate!)),
               ('Exit date', Formatters.date(details.exitedAt)),
               ('Rent at exit', fonts.money(tenant.rentFor(property.baseRent))),
+              (
+                'Exit month billing',
+                details.isProRataRent ? 'Pro-rata (actual days occupied)' : 'Full month billing',
+              ),
               if (property.electricityBillingType ==
                   ElectricityBillingType.SUB_METER)
                 (
@@ -128,6 +132,18 @@ class SettlementStatementPdfBuilder implements SettlementStatementBuilder {
                       : (details.amountDueFromTenant + details.amountPaidByTenant),
                 ),
               ),
+              if (isRefund && details.refundPaymentMethod != null) ...[
+                (
+                  'Refund payment mode',
+                  details.refundPaymentMethod!.label,
+                ),
+                if (details.refundTransactionRef != null &&
+                    details.refundTransactionRef!.isNotEmpty)
+                  (
+                    'Refund transaction ref / UTR',
+                    details.refundTransactionRef!,
+                  ),
+              ],
               if (details.amountPaidByTenant > 0) ...[
                 (
                   'Payment received at exit (${details.paymentMethod?.label ?? 'Received'})',
@@ -190,6 +206,25 @@ class SettlementStatementPdfBuilder implements SettlementStatementBuilder {
             pw.Text('Notes', style: fonts.label),
             pw.SizedBox(height: 3),
             pw.Text(details.notes!, style: fonts.body),
+          ],
+          if (details.handoverChecklist.isNotEmpty) ...[
+            pw.SizedBox(height: 14),
+            pw.Text('4. Handover & inspection verification', style: fonts.heading),
+            pw.SizedBox(height: 6),
+            ...details.handoverChecklist.map(
+              (item) => pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(vertical: 2),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(' [✓] ', style: fonts.bodyBold),
+                    pw.Expanded(
+                      child: pw.Text(item, style: fonts.body),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
           pw.SizedBox(height: 30),
           pw.Row(

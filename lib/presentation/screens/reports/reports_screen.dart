@@ -135,9 +135,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            error is AppException
-                ? error.message
-                : 'Could not export the report. Please try again.',
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not export the report. Please try again.',
+            ),
           ),
         ),
       );
@@ -396,7 +397,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     leading: CircleAvatar(
                       backgroundColor:
                           (txn.isIncome ? colors.income : colors.expense)
-                              .withValues(alpha: 0.12),
+                              .withOpacity(0.12),
                       child: Icon(
                         txn.isIncome
                             ? Icons.arrow_downward
@@ -524,7 +525,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             const SizedBox(height: 16),
             DropdownButtonFormField<String?>(
               isExpanded: true,
-              initialValue: filter.propertyId,
+              value: filter.propertyId,
               decoration: const InputDecoration(labelText: 'Property'),
               items: <DropdownMenuItem<String?>>[
                 const DropdownMenuItem<String?>(

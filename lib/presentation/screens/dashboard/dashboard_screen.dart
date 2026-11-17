@@ -9,6 +9,7 @@ import '../../../core/utils/communication_utils.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/common_widgets.dart';
 import '../../../domain/models/enums.dart';
+import '../../../providers/notification_providers.dart';
 import '../../../domain/models/ledger_transaction.dart';
 import '../../../domain/models/property.dart';
 import '../../../domain/models/report.dart';
@@ -21,11 +22,24 @@ import '../../../providers/transaction_providers.dart';
 import '../transactions/transaction_entry_sheet.dart';
 
 /// Home screen: KPIs, occupancy, income trend, dues, activity and shortcuts.
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onRefresh(ref);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final metrics = ref.watch(dashboardMetricsProvider);
     final loading = ref.watch(dashboardLoadingProvider);
     final profile = ref.watch(userProfileProvider).valueOrNull;
@@ -45,7 +59,7 @@ class DashboardScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(greeting)),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
-        onPressed: () => _onAddEntry(context, ref),
+        onPressed: () => _onAddEntry(context),
         icon: const Icon(Icons.add),
         label: const Text('Add entry'),
       ),
@@ -65,17 +79,20 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _onAddEntry(BuildContext context, WidgetRef ref) async {
+  Future<void> _onAddEntry(BuildContext context) async {
     final properties =
         ref.read(propertiesProvider).valueOrNull ?? const <Property>[];
     if (properties.isEmpty) {
       context.push(AppRoutes.newProperty);
       return;
     }
-    await showTransactionEntrySheet(
+    final result = await showTransactionEntrySheet(
       context,
       propertyId: properties.first.propertyId,
     );
+    if (result == true) {
+      _onRefresh(ref);
+    }
   }
 
   Future<void> _onRefresh(WidgetRef ref) async {
@@ -126,6 +143,7 @@ class DashboardScreen extends ConsumerWidget {
       ..._recentActivitySection(context, properties, transactions),
       const SizedBox(height: 16),
       _quickActions(context),
+      const _DueReminderScheduler(),
     ];
   }
 
@@ -270,7 +288,7 @@ class DashboardScreen extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
+          color: color.withOpacity(0.12),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -428,11 +446,11 @@ class DashboardScreen extends ConsumerWidget {
       ),
       const SizedBox(height: 8),
       Card(
-        color: theme.colorScheme.errorContainer.withValues(alpha: 0.15),
+        color: theme.colorScheme.errorContainer.withOpacity(0.15),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
-            color: theme.colorScheme.error.withValues(alpha: 0.25),
+            color: theme.colorScheme.error.withOpacity(0.25),
           ),
         ),
         child: Column(
@@ -496,7 +514,7 @@ class DashboardScreen extends ConsumerWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: badgeColor.withValues(alpha: 0.15),
+                          color: badgeColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -555,7 +573,7 @@ class DashboardScreen extends ConsumerWidget {
 
   List<Widget> _pendingDuesSection(BuildContext context, DashboardMetrics m) {
     final theme = Theme.of(context);
-    final dues = m.duesByTenant.take(5).toList(growable: false);
+    final dues = m.duesByTenant;
     return <Widget>[
       SectionHeader(
         title: 'Pending dues',
@@ -616,6 +634,26 @@ class DashboardScreen extends ConsumerWidget {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (due.monthlyRent > 0) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Monthly rent ${Formatters.currencyShort(due.monthlyRent)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      if (due.duePeriods.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Pending for ${due.duePeriods.join(', ')}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -729,7 +767,7 @@ class DashboardScreen extends ConsumerWidget {
     return ListTile(
       onTap: () => context.push(AppRoutes.property(txn.propertyId)),
       leading: CircleAvatar(
-        backgroundColor: color.withValues(alpha: 0.12),
+        backgroundColor: color.withOpacity(0.12),
         child: Icon(
           txn.isIncome ? Icons.south_west : Icons.north_east,
           size: 18,
@@ -840,5 +878,27 @@ class DashboardScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+}
+
+/// Re-schedules local rent-due reminders whenever the reminder preference
+/// or the pending dues change, and wires notification taps to the dashboard.
+class _DueReminderScheduler extends ConsumerWidget {
+  const _DueReminderScheduler();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Re-run (and therefore re-schedule) whenever the reminder preference,
+    // notification toggle or pending dues change.
+    ref.watch(dueReminderSchedulerProvider);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      ref.read(notificationServiceProvider).onReminderTapped = () {
+        context.go(AppRoutes.dashboard);
+      };
+    });
+
+    return const SizedBox.shrink();
   }
 }

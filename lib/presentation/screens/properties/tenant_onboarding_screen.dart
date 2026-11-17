@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/errors/app_exception.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/validators.dart';
@@ -531,7 +532,7 @@ class _TenantOnboardingScreenState
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.5),
+            color: theme.colorScheme.secondaryContainer.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -656,7 +657,13 @@ class _TenantOnboardingScreenState
     setState(() => _submitting = false);
 
     if (id == null) {
-      _showSnack('We could not add the tenant. Please try again.');
+      final error = ref.read(tenantControllerProvider).error;
+      _showSnack(
+        AppException.userMessageOf(
+          error,
+          fallback: 'We could not add the tenant. Please try again.',
+        ),
+      );
       return;
     }
 

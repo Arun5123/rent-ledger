@@ -189,14 +189,18 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.event_outlined),
             title: const Text('Rent reminder day'),
-            subtitle: const Text('Day of the month reminders are sent'),
+            subtitle: Text(
+              reminderDay == 0
+                  ? 'Reminders are turned off'
+                  : 'Day $reminderDay of every month',
+            ),
             trailing: Text(
-              'Day $reminderDay',
+              reminderDay == 0 ? 'Off' : 'Day $reminderDay',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
-            onTap: () => _editReminderDay(context, ref, reminderDay),
+            onTap: () => _selectReminderDay(context, ref, reminderDay),
           ),
         ],
       ),
@@ -288,7 +292,7 @@ class SettingsScreen extends ConsumerWidget {
     return Positioned.fill(
       child: AbsorbPointer(
         child: ColoredBox(
-          color: theme.colorScheme.scrim.withValues(alpha: 0.32),
+          color: theme.colorScheme.scrim.withOpacity(0.32),
           child: const Center(child: CircularProgressIndicator()),
         ),
       ),
@@ -355,38 +359,62 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _editReminderDay(
+  /// Fixed reminder choices: off, or one of 1, 5, 10, 15, 30 (day of month).
+  static const List<_ReminderChoice> _reminderChoices = <_ReminderChoice>[
+    _ReminderChoice('No reminders', 0),
+    _ReminderChoice('1 day', 1),
+    _ReminderChoice('5 days', 5),
+    _ReminderChoice('10 days', 10),
+    _ReminderChoice('15 days', 15),
+    _ReminderChoice('30 days', 30),
+  ];
+
+  Future<void> _selectReminderDay(
     BuildContext context,
     WidgetRef ref,
     int current,
   ) async {
-    final raw = await showDialog<String>(
+    final chosen = await showDialog<int>(
       context: context,
-      builder: (_) => _InputDialog(
-        title: 'Rent reminder day',
-        label: 'Day of month (1-28)',
-        initialValue: '$current',
-        confirmLabel: 'Save',
-        keyboardType: TextInputType.number,
-        validator: (value) {
-          final day = int.tryParse(value ?? '');
-          if (day == null || day < 1 || day > 28) {
-            return 'Enter a day between 1 and 28';
-          }
-          return null;
-        },
+      builder: (_) => AlertDialog(
+        title: const Text('Rent reminder day'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _reminderChoices.length,
+            itemBuilder: (dialogContext, index) {
+              final choice = _reminderChoices[index];
+              return ListTile(
+                leading: Icon(
+                  choice.day == current ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: choice.day == current
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                title: Text(choice.label),
+                selected: choice.day == current,
+                onTap: () => Navigator.of(dialogContext).pop(choice.day),
+              );
+            },
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
       ),
     );
-    if (raw == null) return;
-    final day = int.tryParse(raw);
-    if (day == null) return;
+    if (chosen == null || chosen == current) return;
 
-    await ref.read(localPreferencesProvider).setRentReminderDay(day);
+    await ref.read(localPreferencesProvider).setRentReminderDay(chosen);
     final profile = ref.read(userProfileProvider).valueOrNull;
     if (profile != null) {
       await ref
           .read(userRepositoryProvider)
-          .saveProfile(profile.copyWith(rentReminderDay: day));
+          .saveProfile(profile.copyWith(rentReminderDay: chosen));
     }
   }
 
@@ -567,4 +595,12 @@ class _InputDialogState extends State<_InputDialog> {
       ],
     );
   }
+}
+
+/// Single reminder-day choice shown in the settings picker.
+class _ReminderChoice {
+  const _ReminderChoice(this.label, this.day);
+
+  final String label;
+  final int day;
 }

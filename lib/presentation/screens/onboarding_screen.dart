@@ -32,6 +32,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _notificationsEnabled = true;
   int _reminderDay = 1;
 
+  static const List<MapEntry<String, int>> _kReminderChoices = <MapEntry<String, int>>[
+    MapEntry('No reminders', 0),
+    MapEntry('1 day', 1),
+    MapEntry('5 days', 5),
+    MapEntry('10 days', 10),
+    MapEntry('15 days', 15),
+    MapEntry('30 days', 30),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -109,9 +118,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       if (!mounted) return;
       setState(() => _saving = false);
       _showSnack(
-        error is AppException
-            ? error.message
-            : 'Could not save your setup. Please try again.',
+        AppException.userMessageOf(
+          error,
+          fallback: 'Could not save your setup. Please try again.',
+        ),
       );
     }
   }
@@ -255,36 +265,29 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
           const SizedBox(height: 8),
           Text('Reminder day of month', style: theme.textTheme.bodyMedium),
-          Row(
-            children: [
-              Expanded(
-                child: Slider(
-                  value: _reminderDay.toDouble(),
-                  min: 1,
-                  max: 28,
-                  divisions: 27,
-                  label: '$_reminderDay',
-                  onChanged: _notificationsEnabled
-                      ? (value) =>
-                          setState(() => _reminderDay = value.round())
-                      : null,
-                ),
+          ..._kReminderChoices.map((choice) {
+            final selected = choice.value == _reminderDay;
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
               ),
-              SizedBox(
-                width: 36,
-                child: Text(
-                  '$_reminderDay',
-                  textAlign: TextAlign.end,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
+              title: Text(choice.key),
+              selected: selected,
+              onTap: _notificationsEnabled
+                  ? () => setState(() => _reminderDay = choice.value)
+                  : null,
+            );
+          }),
           Text(
-            'Reminders go out on day $_reminderDay of every month (capped at 28 '
-            'so the date always exists).',
+            _reminderDay == 0
+                ? 'Rent reminders are turned off.'
+                : 'Reminders go out on day $_reminderDay of every month.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/errors/app_exception.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/validators.dart';
@@ -183,9 +184,15 @@ class _TenantEditScreenState extends ConsumerState<TenantEditScreen> {
         context.pop(true);
       }
     } else {
+      final error = ref.read(tenantControllerProvider).error;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not update tenant details. Please try again.'),
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not update tenant details. Please try again.',
+            ),
+          ),
         ),
       );
     }
@@ -582,9 +589,15 @@ class _TenantEditSheetContentState
       );
       Navigator.of(context).pop(true);
     } else {
+      final error = ref.read(tenantControllerProvider).error;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not update tenant details. Please try again.'),
+        SnackBar(
+          content: Text(
+            AppException.userMessageOf(
+              error,
+              fallback: 'Could not update tenant details. Please try again.',
+            ),
+          ),
         ),
       );
     }
